@@ -8,6 +8,8 @@ from services.memory_manager import MemoryManager, memory_manager
 from services.intent_classifier import IntentClassifier
 from services.query_rewriter import QueryRewriter
 from retrieval.retriever import Retriever
+from retrieval.metadata_retriever import MetadataRetriever
+from services.query_router import QueryRouter
 from llm.ollama_client import OllamaClient
 from prompts.conversational_prompts import ConversationalRAGPrompt
 from vectordb.chroma_client import ChromaDBClient
@@ -53,6 +55,8 @@ class ConversationalRAG:
         self.intent_classifier = IntentClassifier(llm_client=self.llm_client)
         self.query_rewriter = QueryRewriter(llm_client=self.llm_client)
         self.retriever = Retriever(vector_db=vector_db, top_k=top_k)
+        self.metadata_retriever = MetadataRetriever(vector_db=vector_db, top_k=top_k)
+        self.query_router = QueryRouter()
         self.prompt_template = ConversationalRAGPrompt()
     
     def chat(
@@ -164,18 +168,28 @@ class ConversationalRAG:
             retrieved_docs = []
             context = ""
             citations = []
+            routing_result = None
             
             if should_retrieve:
                 print("\n[Stage 5] Retrieving documents...")
                 
-                # Use REWRITTEN query for retrieval (critical!)
-                retrieved_docs = self.retriever.retrieve(
-                    query=rewritten_query,  # Use rewritten, not original
+                # Use query router to detect figure/table references
+                routing_result = self.query_router.route_query(rewritten_query)
+                print(f"Query routing: {routing_result['routing_strategy']}")
+                
+                # Use metadata-aware retriever
+                metadata_filters = routing_result.get('metadata_filters')
+                retrieved_docs = self.metadata_retriever.retrieve(
+                    query=rewritten_query,
+                    metadata_filters=metadata_filters,
                     top_k=self.top_k
                 )
                 
-                context = self.retriever.assemble_context(retrieved_docs)
-                citations = self.retriever.extract_citations(retrieved_docs)
+                context = self.metadata_retriever.assemble_context(
+                    retrieved_docs,
+                    highlight_metadata=True
+                )
+                citations = self.metadata_retriever.extract_citations(retrieved_docs)
                 
                 print(f"Retrieved {len(retrieved_docs)} chunks")
             else:
@@ -247,7 +261,8 @@ class ConversationalRAG:
                     "needs_retrieval": needs_retrieval,
                     "retrieval_performed": should_retrieve,
                     "conversation_history_length": len(conversation_history),
-                    "temperature": temperature
+                    "temperature": temperature,
+                    "query_routing": routing_result if routing_result else None
                 }
             
             return response

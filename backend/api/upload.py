@@ -7,12 +7,22 @@ from fastapi.responses import JSONResponse
 import os
 import shutil
 from services.rag_pipeline import RAGPipeline
+from services.structure_aware_rag_pipeline import StructureAwareRAGPipeline
 from schemas.request_models import UploadResponse
+import os
+
+# Check for environment variable to toggle between pipelines
+USE_STRUCTURE_AWARE = os.getenv("USE_STRUCTURE_AWARE_RAG", "true").lower() == "true"
 
 router = APIRouter()
 
-# Initialize RAG Pipeline (singleton pattern)
-rag_pipeline = RAGPipeline()
+# Initialize RAG Pipeline (choose based on environment)
+if USE_STRUCTURE_AWARE:
+    print("[Upload API] Using Structure-Aware RAG Pipeline")
+    rag_pipeline = StructureAwareRAGPipeline()
+else:
+    print("[Upload API] Using Standard RAG Pipeline")
+    rag_pipeline = RAGPipeline()
 
 # Upload directory
 UPLOAD_DIR = "./uploaded_docs"

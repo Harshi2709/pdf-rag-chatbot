@@ -68,22 +68,28 @@ class ChromaDBClient:
         self,
         query_embedding: List[float],
         top_k: int = 5,
-        filter_filenames: Optional[List[str]] = None
+        filter_filenames: Optional[List[str]] = None,
+        where: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Perform similarity search using query embedding
-        Supports filtering by document filenames
+        Supports filtering by document filenames and metadata
         
         Args:
             query_embedding: Query embedding vector
             top_k: Number of top results to return
             filter_filenames: Optional list of filenames to filter results
+            where: Optional ChromaDB where clause for metadata filtering
         
         Returns:
             Dictionary containing documents, metadatas, and distances
         """
         where_filter = None
-        if filter_filenames:
+        
+        # Priority: use explicit where clause if provided
+        if where:
+            where_filter = where
+        elif filter_filenames:
             # Create filter for specific documents
             where_filter = {"filename": {"$in": filter_filenames}}
         
