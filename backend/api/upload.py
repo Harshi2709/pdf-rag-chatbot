@@ -3,6 +3,7 @@ PDF Upload API Endpoint
 Handles PDF file upload and ingestion
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from pathlib import Path
 from fastapi.responses import JSONResponse
 import os
 import shutil
@@ -19,7 +20,7 @@ router = APIRouter()
 # Initialize RAG Pipeline (choose based on environment)
 if USE_STRUCTURE_AWARE:
     print("[Upload API] Using Structure-Aware RAG Pipeline")
-    rag_pipeline = StructureAwareRAGPipeline()
+    rag_pipeline = StructureAwareRAGPipeline(chunk_size=2000, top_k=10)
 else:
     print("[Upload API] Using Standard RAG Pipeline")
     rag_pipeline = RAGPipeline()
@@ -47,8 +48,9 @@ async def upload_pdf(file: UploadFile = File(...)):
         Upload status with ingestion metrics
     """
     # Validate file type
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+    allowed = {".pdf", ".docx"}
+    if Path(file.filename or "").suffix.lower() not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
     
     try:
         from datetime import datetime
@@ -73,9 +75,15 @@ async def upload_pdf(file: UploadFile = File(...)):
         
         print(f"Saved file: {file_path}")
         
-        # Process PDF through RAG pipeline (incremental ingestion)
+        # Deduplicate by SHA256 hash before ingestion
+        from loaders.document_loader import DocumentLoader
+        document_hash = DocumentLoader.compute_hash(file_path)
+        if rag_pipeline.vector_db.document_exists(document_hash):
+            raise HTTPException(status_code=409, detail="This document has already been uploaded.")
+
+        # Process document through RAG pipeline (incremental ingestion)
         upload_timestamp = datetime.now().isoformat()
-        result = rag_pipeline.ingest_pdf(file_path, upload_timestamp)
+        result = rag_pipeline.ingest_document(file_path, upload_timestamp)
         
         if result["status"] == "error":
             raise HTTPException(status_code=500, detail=result["error"])

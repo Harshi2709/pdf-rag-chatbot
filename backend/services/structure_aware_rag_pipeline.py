@@ -2,8 +2,10 @@
 Structure-Aware RAG Pipeline
 Enhanced RAG workflow with document structure understanding
 """
+import os
 import time
 from typing import Dict, List, Any
+from loaders.document_loader import DocumentLoader
 from loaders.docling_loader import DoclingLoader, StructuredDocument
 from chunking.structure_aware_splitter import StructureAwareSplitter
 from embeddings.embedding_model import embedding_model
@@ -58,7 +60,7 @@ class StructureAwareRAGPipeline:
         self.llm_client = OllamaClient(model_name=model_name)
         self.prompt_template = RAGPromptTemplate()
     
-    def ingest_pdf(self, file_path: str, upload_timestamp: str = None) -> Dict[str, Any]:
+    def ingest_document(self, file_path: str, upload_timestamp: str = None) -> Dict[str, Any]:
         """
         Structure-aware PDF ingestion pipeline
         
@@ -78,21 +80,30 @@ class StructureAwareRAGPipeline:
         start_time = time.time()
         
         try:
-            # Stage 1: Structure-Aware PDF Loading
-            print("\n=== Stage 1: Loading PDF with Docling ===")
-            loader = DoclingLoader(file_path)
-            structured_doc: StructuredDocument = loader.load()
+            # Stage 1: Structure-Aware loading (PDF via Docling, other formats via unified loader)
+            print("\n=== Stage 1: Loading document ===")
+            if DocumentLoader.detect_file_type(file_path) == 'pdf':
+                loader = DoclingLoader(file_path)
+                structured_doc: StructuredDocument = loader.load()
+                pages = structured_doc.elements
+            else:
+                pages = DocumentLoader.extract_pages(file_path)
+                structured_doc = None
             
-            print(f"✓ Loaded: {structured_doc.filename}")
-            print(f"  - Pages: {structured_doc.total_pages}")
-            print(f"  - Title: {structured_doc.title or 'N/A'}")
-            print(f"  - Elements: {len(structured_doc.elements)}")
-            print(f"  - Figures: {len(structured_doc.get_figures())}")
-            print(f"  - Tables: {len(structured_doc.get_tables())}")
+            filename = structured_doc.filename if structured_doc else os.path.basename(file_path)
+            print(f"✓ Loaded: {filename}")
+            if structured_doc:
+                print(f"  - Pages: {structured_doc.total_pages}")
+                print(f"  - Title: {structured_doc.title or 'N/A'}")
+                print(f"  - Elements: {len(structured_doc.elements)}")
+                print(f"  - Figures: {len(structured_doc.get_figures())}")
+                print(f"  - Tables: {len(structured_doc.get_tables())}")
+            else:
+                print(f"  - Pages: {len(pages)}")
             
             # Stage 2: Structure-Aware Chunking
             print("\n=== Stage 2: Structure-Aware Chunking ===")
-            chunks = self.structure_splitter.create_chunks(structured_doc.elements)
+            chunks = self.structure_splitter.create_chunks(pages if not structured_doc else structured_doc.elements)
             
             # Count chunk types
             chunk_types = {}
@@ -122,7 +133,11 @@ class StructureAwareRAGPipeline:
             for chunk in chunks:
                 metadata = chunk.metadata.copy()
                 metadata["upload_timestamp"] = upload_timestamp
-                metadata["chunk_type"] = chunk.chunk_type
+                metadata["chunk_type"] = getattr(chunk, 'chunk_type', 'text')
+                metadata.setdefault("filename", filename)
+                metadata.setdefault("file_type", DocumentLoader.detect_file_type(file_path))
+                metadata.setdefault("document_hash", DocumentLoader.compute_hash(file_path))
+                metadata.setdefault("document_id", f"doc_{metadata['document_hash'][:12]}")
                 metadatas.append(metadata)
             
             ids = [chunk.chunk_id for chunk in chunks]
@@ -140,16 +155,16 @@ class StructureAwareRAGPipeline:
             
             return {
                 "status": "success",
-                "filename": structured_doc.filename,
-                "total_pages": structured_doc.total_pages,
+                "filename": filename,
+                "total_pages": structured_doc.total_pages if structured_doc else len(pages),
                 "total_chunks": len(chunks),
                 "chunk_breakdown": chunk_types,
-                "figures_extracted": len(structured_doc.get_figures()),
-                "tables_extracted": len(structured_doc.get_tables()),
+                "figures_extracted": len(structured_doc.get_figures()) if structured_doc else 0,
+                "tables_extracted": len(structured_doc.get_tables()) if structured_doc else 0,
                 "vector_db_count": self.vector_db.get_collection_count(),
                 "processing_time": f"{processing_time:.2f}s",
                 "upload_timestamp": upload_timestamp,
-                "document_title": structured_doc.title
+                "document_title": structured_doc.title if structured_doc else None
             }
         
         except Exception as e:
@@ -161,6 +176,10 @@ class StructureAwareRAGPipeline:
                 "processing_time": f"{time.time() - start_time:.2f}s"
             }
     
+    def ingest_pdf(self, file_path: str, upload_timestamp: str = None) -> Dict[str, Any]:
+        """Backward-compatible alias for document ingestion."""
+        return self.ingest_document(file_path, upload_timestamp)
+
     def query(self, question: str, debug: bool = False) -> Dict[str, Any]:
         """
         Structure-aware RAG query pipeline
@@ -224,9 +243,14 @@ class StructureAwareRAGPipeline:
             processing_time = time.time() - start_time
             print(f"\n✓ Query complete in {processing_time:.2f}s")
             
+            avg_similarity = sum(doc.similarity_score for doc in retrieved_docs) / len(retrieved_docs) if retrieved_docs else 0.0
+            confidence = round(min(0.99, 0.35 + 0.35 * min(1.0, len(citations) / 5.0) + 0.30 * avg_similarity), 2)
+
             response = {
                 "answer": answer.strip(),
                 "citations": citations,
+                "sources": citations,
+                "confidence": confidence,
                 "retrieved_chunks": [doc.to_dict() for doc in retrieved_docs],
                 "processing_time": f"{processing_time:.2f}s",
                 "metadata": {

@@ -11,7 +11,7 @@ import numpy as np
 class EmbeddingModel:
     """
     Singleton Embedding Model
-    Uses sentence-transformers/all-MiniLM-L6-v2 for local embedding generation
+    Uses BAAI/bge-base-en-v1.5 for local embedding generation with fallback support.
     """
     
     _instance = None
@@ -23,7 +23,7 @@ class EmbeddingModel:
             cls._instance = super(EmbeddingModel, cls).__new__(cls)
         return cls._instance
     
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "BAAI/bge-base-en-v1.5"):
         """
         Initialize embedding model (only once due to singleton)
         
@@ -32,7 +32,13 @@ class EmbeddingModel:
         """
         if self._model is None:
             print(f"Loading embedding model: {model_name}")
-            self._model = SentenceTransformer(model_name)
+            try:
+                self._model = SentenceTransformer(model_name)
+            except Exception:
+                fallback_model = "all-MiniLM-L6-v2"
+                print(f"Primary model unavailable, falling back to {fallback_model}")
+                self._model = SentenceTransformer(fallback_model)
+                model_name = fallback_model
             self.model_name = model_name
             self.embedding_dimension = self._model.get_sentence_embedding_dimension()
             print(f"Model loaded. Embedding dimension: {self.embedding_dimension}")

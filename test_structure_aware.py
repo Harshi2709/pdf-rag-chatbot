@@ -16,7 +16,7 @@ def print_section(title: str):
     print("="*60 + "\n")
 
 
-def test_query(question: str, debug: bool = True) -> Dict[str, Any]:
+def _query_sample(question: str, debug: bool = True) -> Dict[str, Any]:
     """Send a query to the chat API"""
     print(f"📝 Query: {question}")
     
@@ -77,7 +77,7 @@ def test_query(question: str, debug: bool = True) -> Dict[str, Any]:
         return {}
 
 
-def test_status():
+def _status_sample():
     """Test the status endpoint"""
     print_section("System Status")
     
@@ -109,7 +109,7 @@ def main():
     print_section("Structure-Aware RAG Test Suite")
     
     # Test 1: Check system status
-    if not test_status():
+    if not _status_sample():
         print("\n❌ Backend is not running or not accessible")
         print("Please start the backend with: python backend/main.py")
         return
@@ -117,32 +117,32 @@ def main():
     # Test 2: Figure queries
     print_section("Test 1: Figure Queries")
     
-    test_query("What is shown in Figure 4?")
+    _query_sample("What is shown in Figure 4?")
     print("\n" + "-"*60 + "\n")
-    test_query("Explain the architecture in Figure 2")
+    _query_sample("Explain the architecture in Figure 2")
     print("\n" + "-"*60 + "\n")
-    test_query("Describe Figure 1")
+    _query_sample("Describe Figure 1")
     
     # Test 3: Table queries
     print_section("Test 2: Table Queries")
     
-    test_query("What does Table I contain?")
+    _query_sample("What does Table I contain?")
     print("\n" + "-"*60 + "\n")
-    test_query("What are the values in Table II?")
+    _query_sample("What are the values in Table II?")
     print("\n" + "-"*60 + "\n")
-    test_query("Which model performed best according to Table I?")
+    _query_sample("Which model performed best according to Table I?")
     
     # Test 4: General queries (should still work)
     print_section("Test 3: General Queries")
     
-    test_query("What is the main contribution of the paper?")
+    _query_sample("What is the main contribution of the paper?")
     print("\n" + "-"*60 + "\n")
-    test_query("Explain the methodology")
+    _query_sample("Explain the methodology")
     
     # Test 5: Mixed queries
     print_section("Test 4: Mixed Queries")
     
-    test_query("Compare the architecture in Figure 2 with the results in Table I")
+    _query_sample("Compare the architecture in Figure 2 with the results in Table I")
     
     print_section("Tests Complete")
     

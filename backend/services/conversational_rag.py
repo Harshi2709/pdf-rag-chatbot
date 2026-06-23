@@ -236,11 +236,16 @@ class ConversationalRAG:
             processing_time = time.time() - start_time
             print(f"\nTotal processing time: {processing_time:.2f}s")
             
+            avg_similarity = sum(doc.similarity_score for doc in retrieved_docs) / len(retrieved_docs) if retrieved_docs else 0.0
+            confidence = round(min(0.99, 0.35 + 0.35 * min(1.0, len(citations) / 5.0) + 0.30 * avg_similarity), 2)
+
             # Build response
             response = {
                 "answer": answer,
                 "session_id": session_id,
                 "citations": citations,
+                "sources": citations,
+                "confidence": confidence,
                 "retrieved_chunks": [doc.to_dict() for doc in retrieved_docs],
                 "processing_time": f"{processing_time:.2f}s",
                 "metadata": {

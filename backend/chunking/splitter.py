@@ -112,11 +112,17 @@ class RecursiveCharacterTextSplitter:
             for chunk_text in text_chunks:
                 chunk_id = f"{filename}_page{page_number}_chunk{chunk_counter}"
                 
+                base_metadata = page.get("metadata", {})
                 metadata = {
                     "filename": filename,
+                    "file_type": base_metadata.get("file_type", "pdf"),
+                    "page_number": page_number,
                     "page": page_number,
                     "chunk_id": chunk_id,
-                    "chunk_index": chunk_counter
+                    "chunk_index": chunk_counter,
+                    "document_hash": base_metadata.get("document_hash", ""),
+                    "document_id": base_metadata.get("document_id", f"doc_{base_metadata.get('document_hash', 'unknown')[:12]}"),
+                    "source_file": base_metadata.get("source_file", filename),
                 }
                 
                 chunk = TextChunk(

@@ -40,6 +40,21 @@ class ChromaDBClient:
             metadata={"description": "Multi-document PDF chunks with embeddings"}
         )
     
+    def _sanitize_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        ChromaDB only accepts str, int, float, or bool as metadata values.
+        None, lists, dicts, etc. must be converted or they raise a TypeError at insert time.
+        """
+        clean: Dict[str, Any] = {}
+        for key, value in metadata.items():
+            if value is None:
+                clean[key] = ""
+            elif isinstance(value, (str, int, float, bool)):
+                clean[key] = value
+            else:
+                clean[key] = str(value)
+        return clean
+
     def add_documents(
         self,
         texts: List[str],
@@ -56,10 +71,12 @@ class ChromaDBClient:
             metadatas: List of metadata dictionaries
             ids: List of unique document IDs
         """
+        sanitized_metadatas = [self._sanitize_metadata(m) for m in metadatas]
+
         self.collection.add(
             documents=texts,
             embeddings=embeddings,
-            metadatas=metadatas,
+            metadatas=sanitized_metadatas,
             ids=ids
         )
         print(f"Added {len(texts)} documents to ChromaDB")
@@ -67,7 +84,7 @@ class ChromaDBClient:
     def similarity_search(
         self,
         query_embedding: List[float],
-        top_k: int = 5,
+        top_k: int = 10,
         filter_filenames: Optional[List[str]] = None,
         where: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -128,6 +145,16 @@ class ChromaDBClient:
         )
         print("Collection reset successfully")
     
+    def document_exists(self, document_hash: str) -> bool:
+        """Return True when a document hash already exists in the collection."""
+        try:
+            results = self.collection.get(include=["metadatas"])
+            metadatas = results.get("metadatas", []) if results else []
+            return any(meta.get("document_hash") == document_hash for meta in metadatas)
+        except Exception as exc:
+            print(f"Error checking document hash: {exc}")
+            return False
+
     def get_all_documents(self) -> List[Dict[str, Any]]:
         """
         Get list of all unique documents in the collection
@@ -150,7 +177,9 @@ class ChromaDBClient:
                     documents[filename] = {
                         "filename": filename,
                         "chunk_count": 0,
-                        "upload_timestamp": metadata.get("upload_timestamp", "unknown")
+                        "upload_timestamp": metadata.get("upload_timestamp", "unknown"),
+                        "document_hash": metadata.get("document_hash", ""),
+                        "file_type": metadata.get("file_type", "unknown")
                     }
                 documents[filename]["chunk_count"] += 1
             

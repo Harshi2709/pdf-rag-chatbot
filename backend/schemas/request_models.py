@@ -21,6 +21,13 @@ class ChatRequest(BaseModel):
     debug: Optional[bool] = Field(False, description="Include debug information in response")
 
 
+class RAGResponse(BaseModel):
+    """Structured V1 answer payload with citations and confidence."""
+    answer: str
+    sources: List[Dict[str, Any]] = Field(default_factory=list)
+    confidence: float = 0.0
+
+
 class ChatResponse(BaseModel):
     """Chat response schema with conversational support"""
     answer: str
@@ -30,6 +37,8 @@ class ChatResponse(BaseModel):
     processing_time: str
     metadata: Optional[Dict[str, Any]] = None
     debug_info: Optional[Dict[str, Any]] = None
+    sources: List[Dict[str, Any]] = Field(default_factory=list)
+    confidence: float = 0.0
 
 
 class UploadResponse(BaseModel):

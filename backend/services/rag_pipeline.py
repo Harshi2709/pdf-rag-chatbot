@@ -4,7 +4,7 @@ Orchestrates the complete RAG workflow
 """
 import time
 from typing import Dict, List, Any
-from loaders.pdf_loader import PDFLoader
+from loaders.document_loader import DocumentLoader
 from chunking.splitter import RecursiveCharacterTextSplitter
 from embeddings.embedding_model import embedding_model
 from vectordb.chroma_client import ChromaDBClient
@@ -50,7 +50,7 @@ class RAGPipeline:
         self.llm_client = OllamaClient(model_name=model_name)
         self.prompt_template = RAGPromptTemplate()
     
-    def ingest_pdf(self, file_path: str, upload_timestamp: str = None) -> Dict[str, Any]:
+    def ingest_document(self, file_path: str, upload_timestamp: str = None) -> Dict[str, Any]:
         """
         Complete PDF ingestion pipeline with incremental support
         Appends to existing vector database without overwriting
@@ -71,15 +71,15 @@ class RAGPipeline:
         start_time = time.time()
         
         try:
-            # Stage 1: PDF Loading
-            print("Stage 1: Loading PDF...")
-            loader = PDFLoader(file_path)
-            pdf_document = loader.load()
-            print(f"Loaded {pdf_document.total_pages} pages from {pdf_document.filename}")
-            
-            # Stage 2: Text Chunking
+            # Stage 1: Unified document loading
+            print("Stage 1: Loading document...")
+            pages = DocumentLoader.extract_pages(file_path)
+            filename = pages[0]['filename'] if pages else file_path
+            print(f"Loaded {len(pages)} page(s) from {filename}")
+
+            # Stage 2: Text chunking with enhanced metadata
             print("Stage 2: Chunking text...")
-            chunks = self.text_splitter.create_chunks(pdf_document.pages)
+            chunks = self.text_splitter.create_chunks(pages)
             print(f"Created {len(chunks)} chunks")
             
             # Stage 3: Embedding Generation
@@ -91,13 +91,19 @@ class RAGPipeline:
             # Stage 4: Incremental Vector Storage
             print("Stage 4: Appending to vector database...")
             
-            # Add upload timestamp to metadata
             if upload_timestamp is None:
                 from datetime import datetime
                 upload_timestamp = datetime.now().isoformat()
-            
+
+            document_hash = pages[0].get('metadata', {}).get('document_hash', DocumentLoader.compute_hash(file_path)) if pages else DocumentLoader.compute_hash(file_path)
+            document_id = f"doc_{document_hash[:12]}"
+
             metadatas = [chunk.metadata for chunk in chunks]
             for metadata in metadatas:
+                metadata.setdefault("document_id", document_id)
+                metadata.setdefault("document_hash", document_hash)
+                metadata.setdefault("file_type", metadata.get('file_type') or DocumentLoader.detect_file_type(file_path))
+                metadata.setdefault("filename", filename)
                 metadata["upload_timestamp"] = upload_timestamp
             
             ids = [chunk.chunk_id for chunk in chunks]
@@ -114,8 +120,8 @@ class RAGPipeline:
             
             return {
                 "status": "success",
-                "filename": pdf_document.filename,
-                "total_pages": pdf_document.total_pages,
+                "filename": filename,
+                "total_pages": len(pages),
                 "total_chunks": len(chunks),
                 "vector_db_count": self.vector_db.get_collection_count(),
                 "processing_time": f"{processing_time:.2f}s",
@@ -128,6 +134,10 @@ class RAGPipeline:
                 "error": str(e),
                 "processing_time": f"{time.time() - start_time:.2f}s"
             }
+
+    def ingest_pdf(self, file_path: str, upload_timestamp: str = None) -> Dict[str, Any]:
+        """Backward-compatible alias for document ingestion."""
+        return self.ingest_document(file_path, upload_timestamp)
     
     def query(self, question: str) -> Dict[str, Any]:
         """
@@ -172,9 +182,14 @@ class RAGPipeline:
             
             processing_time = time.time() - start_time
             
+            avg_similarity = sum(doc.similarity_score for doc in retrieved_docs) / len(retrieved_docs) if retrieved_docs else 0.0
+            confidence = round(min(0.99, 0.35 + 0.35 * min(1.0, len(citations) / 5.0) + 0.30 * avg_similarity), 2)
+
             return {
                 "answer": answer.strip(),
                 "citations": citations,
+                "sources": citations,
+                "confidence": confidence,
                 "retrieved_chunks": [doc.to_dict() for doc in retrieved_docs],
                 "processing_time": f"{processing_time:.2f}s",
                 "metadata": {
