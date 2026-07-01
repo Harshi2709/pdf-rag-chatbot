@@ -13,6 +13,9 @@ from services.query_router import QueryRouter
 from llm.ollama_client import OllamaClient
 from prompts.conversational_prompts import ConversationalRAGPrompt
 from vectordb.chroma_client import ChromaDBClient
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class ConversationalRAG:
@@ -66,23 +69,11 @@ class ConversationalRAG:
         chat_history: Optional[List[Dict[str, str]]] = None,
         debug: bool = False
     ) -> Dict[str, Any]:
-        """
-        Process conversational query through complete pipeline
-        
-        Args:
-            query: User query (can be conversational)
-            session_id: Optional session ID for memory tracking
-            chat_history: Optional chat history from frontend
-            debug: Include debug information in response
-        
-        Returns:
-            Response dictionary with answer and debug info
-        """
         start_time = time.time()
         
         try:
             # ===== STAGE 1: CONVERSATION MEMORY =====
-            print("\n[Stage 1] Retrieving conversation memory...")
+            logger.info("[Stage 1] Retrieving conversation memory...")
             
             # Get or create session
             if session_id:
@@ -97,10 +88,10 @@ class ConversationalRAG:
             else:
                 conversation_history = session.get_recent_messages(n=5)
             
-            print(f"Session: {session_id}, History length: {len(conversation_history)}")
+            logger.debug("Session: %s, History length: %d", session_id, len(conversation_history))
             
             # ===== STAGE 2: INTENT CLASSIFICATION =====
-            print("\n[Stage 2] Classifying intent...")
+            logger.info("[Stage 2] Classifying intent...")
             
             intent_result = self.intent_classifier.classify(
                 query=query,
@@ -110,10 +101,10 @@ class ConversationalRAG:
             detected_intent = intent_result["intent"]
             needs_retrieval = intent_result["needs_retrieval"]
             
-            print(f"Intent: {detected_intent}, Needs Retrieval: {needs_retrieval}")
+            logger.debug("Intent: %s, Needs Retrieval: %s", detected_intent, needs_retrieval)
             
             # ===== STAGE 3: QUERY REWRITING =====
-            print("\n[Stage 3] Rewriting query...")
+            logger.info("[Stage 3] Rewriting query...")
             
             rewrite_result = self.query_rewriter.rewrite(
                 query=query,
@@ -124,12 +115,12 @@ class ConversationalRAG:
             rewritten_query = rewrite_result["rewritten_query"]
             was_rewritten = rewrite_result["was_rewritten"]
             
-            print(f"Original: {query}")
-            print(f"Rewritten: {rewritten_query}")
-            print(f"Was Rewritten: {was_rewritten}")
+            logger.debug("Original query: %s", query)
+            logger.debug("Rewritten query: %s", rewritten_query)
+            logger.debug("Was rewritten: %s", was_rewritten)
             
             # ===== STAGE 4: RETRIEVAL DECISION =====
-            print("\n[Stage 4] Making retrieval decision...")
+            logger.info("[Stage 4] Making retrieval decision...")
             
             # Check if vector DB has documents
             has_documents = self.vector_db.get_collection_count() > 0
@@ -162,7 +153,7 @@ class ConversationalRAG:
             # Decide whether to retrieve
             should_retrieve = needs_retrieval and has_documents
             
-            print(f"Should Retrieve: {should_retrieve}")
+            logger.debug("Should Retrieve: %s", should_retrieve)
             
             # ===== STAGE 5: DOCUMENT RETRIEVAL (CONDITIONAL) =====
             retrieved_docs = []
@@ -171,11 +162,11 @@ class ConversationalRAG:
             routing_result = None
             
             if should_retrieve:
-                print("\n[Stage 5] Retrieving documents...")
+                logger.info("[Stage 5] Retrieving documents...")
                 
                 # Use query router to detect figure/table references
                 routing_result = self.query_router.route_query(rewritten_query)
-                print(f"Query routing: {routing_result['routing_strategy']}")
+                logger.debug("Query routing: %s", routing_result['routing_strategy'])
                 
                 # Use metadata-aware retriever
                 metadata_filters = routing_result.get('metadata_filters')
@@ -191,12 +182,12 @@ class ConversationalRAG:
                 )
                 citations = self.metadata_retriever.extract_citations(retrieved_docs)
                 
-                print(f"Retrieved {len(retrieved_docs)} chunks")
+                logger.info("Retrieved %d chunks", len(retrieved_docs))
             else:
-                print("\n[Stage 5] Skipping retrieval (not needed for this intent)")
+                logger.info("[Stage 5] Skipping retrieval (not needed for this intent)")
             
             # ===== STAGE 6: PROMPT CONSTRUCTION =====
-            print("\n[Stage 6] Building prompt...")
+            logger.info("[Stage 6] Building prompt...")
             
             # Format conversation history
             history_str = self.memory_manager.format_history_for_llm(
@@ -219,7 +210,7 @@ class ConversationalRAG:
                 )
             
             # ===== STAGE 7: LLM RESPONSE =====
-            print("\n[Stage 7] Generating response...")
+            logger.info("[Stage 7] Generating response...")
             
             # Adjust temperature based on intent
             temperature = 0.3 if detected_intent in ["document_qa", "comparison"] else 0.7
@@ -228,13 +219,13 @@ class ConversationalRAG:
             answer = answer.strip()
             
             # ===== STAGE 8: MEMORY UPDATE =====
-            print("\n[Stage 8] Updating memory...")
+            logger.info("[Stage 8] Updating memory...")
             
             self.memory_manager.add_message(session_id, "user", query)
             self.memory_manager.add_message(session_id, "assistant", answer)
             
             processing_time = time.time() - start_time
-            print(f"\nTotal processing time: {processing_time:.2f}s")
+            logger.info("Total processing time: %.2fs", processing_time)
             
             avg_similarity = sum(doc.similarity_score for doc in retrieved_docs) / len(retrieved_docs) if retrieved_docs else 0.0
             confidence = round(min(0.99, 0.35 + 0.35 * min(1.0, len(citations) / 5.0) + 0.30 * avg_similarity), 2)
@@ -273,9 +264,7 @@ class ConversationalRAG:
             return response
         
         except Exception as e:
-            print(f"\nError in conversational RAG: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error in conversational RAG pipeline")
             
             return {
                 "answer": f"I encountered an error processing your question: {str(e)}",
@@ -287,15 +276,6 @@ class ConversationalRAG:
             }
     
     def get_session_info(self, session_id: str) -> Dict[str, Any]:
-        """
-        Get information about a conversation session
-        
-        Args:
-            session_id: Session ID to query
-        
-        Returns:
-            Session information dictionary
-        """
         session = self.memory_manager.get_session(session_id)
         
         if not session:

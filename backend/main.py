@@ -6,6 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.upload import router as upload_router
 from api.chat import router as chat_router
+from utils.logging_config import setup_logging, get_logger
+
+# Initialize logging
+setup_logging(log_level="INFO")
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="PDF RAG Chat API",
@@ -32,9 +37,18 @@ app.include_router(upload_router, prefix="/api", tags=["Upload"])
 app.include_router(chat_router, prefix="/api", tags=["Chat"])
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Log startup event"""
+    logger.info("=" * 50)
+    logger.info("PDF RAG Chat API Starting...")
+    logger.info("=" * 50)
+
+
 @app.get("/health")
 async def health_check():
     """Backend health check endpoint"""
+    logger.debug("Health check requested")
     return {
         "status": "healthy",
         "service": "PDF RAG Chat API",
@@ -45,6 +59,7 @@ async def health_check():
 @app.get("/status")
 async def status():
     """Backend status endpoint for frontend connectivity check"""
+    logger.debug("Status check requested")
     return {
         "status": "running",
         "message": "Backend is operational",
@@ -56,6 +71,7 @@ async def status():
 @app.get("/")
 async def root():
     """Root endpoint"""
+    logger.debug("Root endpoint accessed")
     return {
         "message": "PDF RAG Chat API",
         "docs": "/docs",

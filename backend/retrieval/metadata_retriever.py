@@ -6,6 +6,9 @@ from typing import List, Dict, Optional, Any
 from embeddings.embedding_model import embedding_model
 from vectordb.chroma_client import ChromaDBClient
 from retrieval.retriever import RetrievedDocument
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class MetadataRetriever:
@@ -54,19 +57,19 @@ class MetadataRetriever:
         k = top_k if top_k is not None else self.top_k
         
         # Generate query embedding
-        print(f"[MetadataRetriever] Generating embedding for query: {query[:50]}...")
+        logger.debug(f"[MetadataRetriever] Generating embedding for query: {query[:50]}...")
         query_embedding = self.embedding_model.embed_text(query)
         
         # Apply metadata filtering if provided
         if metadata_filters and metadata_filters.get("type"):
-            print(f"[MetadataRetriever] Applying metadata filters: {metadata_filters}")
+            logger.debug(f"[MetadataRetriever] Applying metadata filters: {metadata_filters}")
             retrieved_docs = self._retrieve_with_filters(
                 query_embedding,
                 metadata_filters,
                 k
             )
         else:
-            print(f"[MetadataRetriever] Performing standard semantic search")
+            logger.debug(f"[MetadataRetriever] Performing standard semantic search")
             retrieved_docs = self._retrieve_standard(query_embedding, k)
         
         print(f"[MetadataRetriever] Retrieved {len(retrieved_docs)} documents")

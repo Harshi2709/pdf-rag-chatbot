@@ -2,12 +2,17 @@
 Docling-based PDF Loader
 Structure-aware document parsing with figure and table extraction
 """
+from importlib.metadata import metadata
+from pydoc import text
 from typing import List, Dict, Any, Optional
 
 from annotated_types import doc
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument, DocItemLabel
 import os
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class StructuredDocument:
@@ -36,12 +41,21 @@ class DoclingLoader:
         self.filename = os.path.basename(file_path)
         self.converter = DocumentConverter()
 
+        # Lazy-init figure describer
+        from services.figure_describer import FigureDescriber
+        self.figure_describer = FigureDescriber(file_path)
+        self._llava_available = self.figure_describer.is_llava_available()
+        if self._llava_available:
+            logger.info("[DoclingLoader] LLaVA available - figures will be visually described")
+        else:
+            logger.warning("[DoclingLoader] LLaVA not available - figures will use caption only")
+
     def load(self) -> StructuredDocument:
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"PDF file not found: {self.file_path}")
 
         try:
-            print(f"[DoclingLoader] Processing: {self.filename}")
+            logger.info(f"[DoclingLoader] Processing: {self.filename}")
             result = self.converter.convert(self.file_path)
             doc: DoclingDocument = result.document
 
@@ -49,7 +63,7 @@ class DoclingLoader:
             total_pages = self._get_total_pages(doc)
             title = self._extract_title(doc)
 
-            print(f"[DoclingLoader] Extracted {len(elements)} elements from {total_pages} pages")
+            logger.info(f"[DoclingLoader] Extracted {len(elements)} elements from {total_pages} pages")
 
             return StructuredDocument(
                 filename=self.filename,
@@ -58,7 +72,7 @@ class DoclingLoader:
                 total_pages=total_pages
             )
         except Exception as e:
-            print(f"[DoclingLoader] Docling failed ({e}), falling back to PDFLoader")
+            logger.warning(f"[DoclingLoader] Docling failed ({e}), falling back to PDFLoader")
             from loaders.pdf_loader import PDFLoader
             pdf_doc = PDFLoader(self.file_path).load()
             elements = [
@@ -129,7 +143,7 @@ class DoclingLoader:
         label = getattr(item, 'label', None)
         text = getattr(item, 'text', '').strip()
 
-        if not text and label != DocItemLabel.TABLE:
+        if not text and label not in (DocItemLabel.TABLE, DocItemLabel.PICTURE):
             return None
 
         page_num = self._get_page_number(item)
@@ -168,6 +182,7 @@ class DoclingLoader:
 
             return {"type": "table", "content": table_text, "page": page_num, "metadata": metadata}
 
+        # In _process_doc_item, PICTURE branch
         elif label == DocItemLabel.PICTURE:
             figure_id = self._find_matching_id(figure_captions, page_num)
             caption = figure_captions[figure_id][0] if figure_id and figure_id in figure_captions else ""
@@ -176,7 +191,14 @@ class DoclingLoader:
             metadata["caption"] = caption
             metadata["has_caption"] = bool(caption)
 
-            return {"type": "figure", "content": text or "[Image content]", "page": page_num, "metadata": metadata}
+            figure_content = text or "[Image content]"
+            if self._llava_available:
+                vision_desc = self.figure_describer.describe_figure_on_page(page_num=page_num, caption=caption)
+            if vision_desc:
+                figure_content = vision_desc
+                metadata["has_vision_description"] = True
+
+            return {"type": "figure", "content": figure_content, "page": page_num, "metadata":  metadata}
 
         elif label == DocItemLabel.CAPTION:
             return {"type": "caption", "content": text, "page": page_num, "metadata": metadata}
@@ -250,3 +272,8 @@ class DoclingLoader:
             return os.path.exists(self.file_path) and self.file_path.lower().endswith('.pdf')
         except:
             return False
+        
+        # Add a close method on DoclingLoader to clean up
+    def close(self):
+        if hasattr(self, 'figure_describer'):
+            self.figure_describer.close()

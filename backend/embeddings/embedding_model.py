@@ -6,6 +6,9 @@ Implements singleton pattern for model reuse
 from sentence_transformers import SentenceTransformer
 from typing import List
 import numpy as np
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class EmbeddingModel:
@@ -31,17 +34,17 @@ class EmbeddingModel:
             model_name: Name of the sentence-transformers model
         """
         if self._model is None:
-            print(f"Loading embedding model: {model_name}")
+            logger.info(f"Loading embedding model: {model_name}")
             try:
                 self._model = SentenceTransformer(model_name)
             except Exception:
                 fallback_model = "all-MiniLM-L6-v2"
-                print(f"Primary model unavailable, falling back to {fallback_model}")
+                logger.warning(f"Primary model unavailable, falling back to {fallback_model}")
                 self._model = SentenceTransformer(fallback_model)
                 model_name = fallback_model
             self.model_name = model_name
             self.embedding_dimension = self._model.get_sentence_embedding_dimension()
-            print(f"Model loaded. Embedding dimension: {self.embedding_dimension}")
+            logger.info(f"Model loaded. Embedding dimension: {self.embedding_dimension}")
     
     def embed_text(self, text: str) -> List[float]:
         """

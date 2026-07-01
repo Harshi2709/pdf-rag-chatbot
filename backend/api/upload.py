@@ -10,7 +10,9 @@ import shutil
 from services.rag_pipeline import RAGPipeline
 from services.structure_aware_rag_pipeline import StructureAwareRAGPipeline
 from schemas.request_models import UploadResponse
-import os
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Check for environment variable to toggle between pipelines
 USE_STRUCTURE_AWARE = os.getenv("USE_STRUCTURE_AWARE_RAG", "true").lower() == "true"
@@ -19,10 +21,10 @@ router = APIRouter()
 
 # Initialize RAG Pipeline (choose based on environment)
 if USE_STRUCTURE_AWARE:
-    print("[Upload API] Using Structure-Aware RAG Pipeline")
+    logger.info("[Upload API] Using Structure-Aware RAG Pipeline")
     rag_pipeline = StructureAwareRAGPipeline(chunk_size=2000, top_k=10)
 else:
-    print("[Upload API] Using Standard RAG Pipeline")
+    logger.info("[Upload API] Using Standard RAG Pipeline")
     rag_pipeline = RAGPipeline()
 
 # Upload directory
@@ -73,7 +75,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        print(f"Saved file: {file_path}")
+        logger.info(f"Saved file: {file_path}")
         
         # Deduplicate by SHA256 hash before ingestion
         from loaders.document_loader import DocumentLoader

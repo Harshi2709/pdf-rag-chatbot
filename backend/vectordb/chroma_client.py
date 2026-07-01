@@ -10,19 +10,8 @@ from datetime import datetime
 
 
 class ChromaDBClient:
-    """
-    ChromaDB Client for vector storage and retrieval
-    Implements persistent storage with semantic similarity search
-    Supports multi-document incremental ingestion
-    """
-    
     def __init__(self, persist_directory: str = "./chroma_db"):
-        """
-        Initialize ChromaDB client with persistent storage
         
-        Args:
-            persist_directory: Directory for persistent vector storage
-        """
         self.persist_directory = persist_directory
         
         # Ensure directory exists
@@ -41,10 +30,6 @@ class ChromaDBClient:
         )
     
     def _sanitize_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        ChromaDB only accepts str, int, float, or bool as metadata values.
-        None, lists, dicts, etc. must be converted or they raise a TypeError at insert time.
-        """
         clean: Dict[str, Any] = {}
         for key, value in metadata.items():
             if value is None:
@@ -62,15 +47,6 @@ class ChromaDBClient:
         metadatas: List[Dict[str, Any]],
         ids: List[str]
     ) -> None:
-        """
-        Add documents to vector database
-        
-        Args:
-            texts: List of text chunks
-            embeddings: List of embedding vectors
-            metadatas: List of metadata dictionaries
-            ids: List of unique document IDs
-        """
         sanitized_metadatas = [self._sanitize_metadata(m) for m in metadatas]
 
         self.collection.add(
@@ -88,19 +64,6 @@ class ChromaDBClient:
         filter_filenames: Optional[List[str]] = None,
         where: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """
-        Perform similarity search using query embedding
-        Supports filtering by document filenames and metadata
-        
-        Args:
-            query_embedding: Query embedding vector
-            top_k: Number of top results to return
-            filter_filenames: Optional list of filenames to filter results
-            where: Optional ChromaDB where clause for metadata filtering
-        
-        Returns:
-            Dictionary containing documents, metadatas, and distances
-        """
         where_filter = None
         
         # Priority: use explicit where clause if provided
@@ -156,12 +119,6 @@ class ChromaDBClient:
             return False
 
     def get_all_documents(self) -> List[Dict[str, Any]]:
-        """
-        Get list of all unique documents in the collection
-        
-        Returns:
-            List of document metadata dictionaries
-        """
         try:
             # Get all items from collection
             results = self.collection.get()
@@ -189,15 +146,6 @@ class ChromaDBClient:
             return []
     
     def delete_document(self, filename: str) -> bool:
-        """
-        Delete all chunks for a specific document
-        
-        Args:
-            filename: Name of the document to delete
-        
-        Returns:
-            True if successful, False otherwise
-        """
         try:
             # Get all IDs for this document
             results = self.collection.get(

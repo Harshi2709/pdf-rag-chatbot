@@ -4,6 +4,9 @@ Converts conversational queries into standalone searchable queries
 """
 from typing import List, Dict, Any, Optional
 from llm.ollama_client import OllamaClient
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class QueryRewriter:
@@ -125,7 +128,7 @@ REWRITTEN QUERY:"""
             }
         
         except Exception as e:
-            print(f"Query rewriting error: {e}")
+            logger.exception("Query rewriting error")
             # Fallback to rule-based rewriting
             return self._fallback_rewrite(query, conversation_history)
     

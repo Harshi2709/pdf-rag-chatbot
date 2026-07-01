@@ -11,6 +11,9 @@ from vectordb.chroma_client import ChromaDBClient
 from retrieval.retriever import Retriever
 from llm.ollama_client import OllamaClient
 from prompts.rag_prompt import RAGPromptTemplate
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class RAGPipeline:
@@ -72,24 +75,24 @@ class RAGPipeline:
         
         try:
             # Stage 1: Unified document loading
-            print("Stage 1: Loading document...")
+            logger.info("Stage 1: Loading document...")
             pages = DocumentLoader.extract_pages(file_path)
             filename = pages[0]['filename'] if pages else file_path
-            print(f"Loaded {len(pages)} page(s) from {filename}")
+            logger.info("Loaded %d page(s) from %s", len(pages), filename)
 
             # Stage 2: Text chunking with enhanced metadata
-            print("Stage 2: Chunking text...")
+            logger.info("Stage 2: Chunking text...")
             chunks = self.text_splitter.create_chunks(pages)
-            print(f"Created {len(chunks)} chunks")
+            logger.info("Created %d chunks", len(chunks))
             
             # Stage 3: Embedding Generation
-            print("Stage 3: Generating embeddings...")
+            logger.info("Stage 3: Generating embeddings...")
             texts = [chunk.text for chunk in chunks]
             embeddings = self.embedding_model.embed_texts(texts)
-            print(f"Generated {len(embeddings)} embeddings")
+            logger.info("Generated %d embeddings", len(embeddings))
             
             # Stage 4: Incremental Vector Storage
-            print("Stage 4: Appending to vector database...")
+            logger.info("Stage 4: Appending to vector database...")
             
             if upload_timestamp is None:
                 from datetime import datetime
@@ -129,6 +132,7 @@ class RAGPipeline:
             }
         
         except Exception as e:
+            logger.exception("Error ingesting document %s", file_path)
             return {
                 "status": "error",
                 "error": str(e),
@@ -162,19 +166,19 @@ class RAGPipeline:
         
         try:
             # Stage 1-3: Retrieval
-            print("Stages 1-3: Retrieving relevant documents...")
+            logger.info("Stages 1-3: Retrieving relevant documents...")
             retrieved_docs = self.retriever.retrieve(question, top_k=self.top_k)
             
             # Stage 4: Context Assembly
-            print("Stage 4: Assembling context...")
+            logger.info("Stage 4: Assembling context...")
             context = self.retriever.assemble_context(retrieved_docs)
             
             # Stage 5: Prompt Construction
-            print("Stage 5: Building prompt...")
+            logger.info("Stage 5: Building prompt...")
             prompt = self.prompt_template.build_prompt(context, question)
             
             # Stage 6-7: LLM Inference
-            print("Stages 6-7: Generating response...")
+            logger.info("Stages 6-7: Generating response...")
             answer = self.llm_client.generate(prompt, temperature=0.7)
             
             # Extract citations
@@ -199,6 +203,7 @@ class RAGPipeline:
             }
         
         except Exception as e:
+            logger.exception("Error processing query: %s", question)
             return {
                 "answer": f"Error processing query: {str(e)}",
                 "citations": [],

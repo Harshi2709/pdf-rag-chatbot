@@ -4,6 +4,9 @@ Determines user query intent to decide retrieval strategy
 """
 from typing import Dict, List, Any, Optional
 from llm.ollama_client import OllamaClient
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class IntentClassifier:
@@ -119,7 +122,7 @@ IMPORTANT: Respond with ONLY the intent name (e.g., "document_qa"). No explanati
             }
         
         except Exception as e:
-            print(f"Intent classification error: {e}")
+            logger.exception("Intent classification error")
             # Fallback to rule-based
             return self._fallback_classification(query, conversation_history)
     

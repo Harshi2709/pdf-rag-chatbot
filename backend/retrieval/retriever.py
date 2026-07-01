@@ -7,6 +7,9 @@ import re
 from typing import List, Dict, Optional, Any
 from embeddings.embedding_model import embedding_model
 from vectordb.chroma_client import ChromaDBClient
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class RetrievedDocument:
@@ -66,11 +69,11 @@ class Retriever:
         k = top_k if top_k is not None else self.top_k
         
         # Step 1: Convert query to embedding
-        print(f"Generating embedding for query: {query[:50]}...")
+        logger.debug(f"Generating embedding for query: {query[:50]}...")
         query_embedding = self.embedding_model.embed_text(query)
         
         # Step 2: Perform dense similarity search
-        print(f"Performing dense similarity search (top_k={k})...")
+        logger.debug(f"Performing dense similarity search (top_k={k})...")
         search_results = self.vector_db.similarity_search(
             query_embedding=query_embedding,
             top_k=min(k * 4, 50)
@@ -101,7 +104,7 @@ class Retriever:
                 merged[key] = doc
 
         retrieved_docs = sorted(merged.values(), key=lambda item: item.similarity_score, reverse=True)[:k]
-        print(f"Retrieved {len(retrieved_docs)} documents")
+        logger.info(f"Retrieved {len(retrieved_docs)} documents")
         return retrieved_docs
     
     def assemble_context(self, retrieved_docs: List[RetrievedDocument]) -> str:

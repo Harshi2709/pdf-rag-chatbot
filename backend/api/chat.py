@@ -7,6 +7,10 @@ from fastapi.responses import JSONResponse
 from schemas.request_models import ChatRequest, ChatResponse
 from services.conversational_rag import ConversationalRAG
 from vectordb.chroma_client import ChromaDBClient
+from utils.logging_config import get_logger
+import traceback
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -40,6 +44,8 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
     
     try:
+        logger.info(f"Chat request received - Session: {request.session_id}, Question: {request.question[:100]}...")
+        
         # Convert Pydantic Message models to dictionaries
         chat_history = None
         if request.chat_history:
@@ -56,11 +62,11 @@ async def chat(request: ChatRequest):
             debug=request.debug or False
         )
         
+        logger.debug(f"Chat response generated successfully for session: {request.session_id}")
         return JSONResponse(content=result)
     
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Chat failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 
 
@@ -76,7 +82,9 @@ async def get_session(session_id: str):
         Session information
     """
     try:
+        logger.debug(f"Fetching session info for: {session_id}")
         result = conversational_rag.get_session_info(session_id)
+        logger.debug(f"Session info retrieved for: {session_id}")
         return JSONResponse(content=result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get session: {str(e)}")
